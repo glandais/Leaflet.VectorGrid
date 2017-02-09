@@ -37,13 +37,12 @@ L.VectorGrid = L.GridLayer.extend({
 			for (var layerName in vectorTile.layers) {
 				var layer = vectorTile.layers[layerName];
 
-				/// NOTE: THIS ASSUMES SQUARE TILES!!!!!1!
-				var pxPerExtent = this.getTileSize().x / layer.extent;
+				var pxPerExtent = this.getTileSize().divideBy(layer.extent);
 
 				var layerStyle = this.options.vectorTileLayerStyles[ layerName ] ||
 				L.Path.prototype.options;
 
-				for (var i in layer.features) {
+				for (var i = 0; i < layer.features.length; i++) {
 					var feat = layer.features[i];
 					var id;
 
@@ -74,7 +73,7 @@ L.VectorGrid = L.GridLayer.extend({
 
 					var featureLayer = this._createLayer(feat, pxPerExtent);
 
-					for (var j in styleOptions) {
+					for (var j = 0; j < styleOptions.length; j++) {
 						var style = L.extend({}, L.Path.prototype.options, styleOptions[j]);
 						featureLayer.render(renderer, style);
 						renderer._addPath(featureLayer);
@@ -93,7 +92,9 @@ L.VectorGrid = L.GridLayer.extend({
 				}
 
 			}
-			renderer.addTo(this._map);
+			if (this._map != null) {
+				renderer.addTo(this._map);
+			}
 			L.Util.requestAnimFrame(done.bind(coords, null, null));
 		}.bind(this));
 
@@ -151,7 +152,7 @@ L.VectorGrid = L.GridLayer.extend({
 			styleOptions = [styleOptions];
 		}
 
-		for (var j in styleOptions) {
+		for (var j = 0; j < styleOptions.length; j++) {
 			var style = L.extend({}, L.Path.prototype.options, styleOptions[j]);
 			feat.updateStyle(renderer, style);
 		}
@@ -231,14 +232,19 @@ var PointLayer = L.CircleMarker.extend({
 
 	render: function(renderer, style) {
 		FeatureLayer.prototype.render.call(this, renderer, style);
-		this._radius = style.radius;
+		this._radius = style.radius || L.CircleMarker.prototype.options.radius;
 		this._updatePath();
 	},
 
 	_makeFeatureParts: function(feat, pxPerExtent) {
-		var coord = feat.geometry[0][0];
-		if ('x' in coord) {
-			this._point = L.point(coord.x * pxPerExtent, coord.y * pxPerExtent);
+		var coord = feat.geometry[0];
+		if (typeof coord[0] === 'object' && 'x' in coord[0]) {
+			// Protobuf vector tiles return [{x: , y:}]
+			this._point = L.point(coord[0]).scaleBy(pxPerExtent);
+			this._empty = L.Util.falseFn;
+		} else {
+			// Geojson-vt returns [,]
+			this._point = L.point(coord).scaleBy(pxPerExtent);
 			this._empty = L.Util.falseFn;
 		}
 	},
@@ -305,18 +311,14 @@ var polyBase = {
 		var coord;
 
 		this._parts = [];
-		for (var i in rings) {
+		for (var i = 0; i < rings.length; i++) {
 			var ring = rings[i];
 			var part = [];
-			for (var j in ring) {
+			for (var j = 0; j < ring.length; j++) {
 				coord = ring[j];
-				if ('x' in coord) {
-					// Protobuf vector tiles return {x: , y:}
-					part.push(L.point(coord.x * pxPerExtent, coord.y * pxPerExtent));
-				} else {
-					// Geojson-vt returns [,]
-					part.push(L.point(coord[0] * pxPerExtent, coord[1] * pxPerExtent));
-				}
+				// Protobuf vector tiles return {x: , y:}
+				// Geojson-vt returns [,]
+				part.push(L.point(coord).scaleBy(pxPerExtent));
 			}
 			this._parts.push(part);
 		}
